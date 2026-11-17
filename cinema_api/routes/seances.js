@@ -1,54 +1,43 @@
 import { Router } from "express";
 
-import { seances, reservations, prochainId, placesRestantes } from "../data.js";
+import { films, seances, prochainId, placesRestantes } from "../data.js";
 import { validerId } from "../middlewares.js";
 
 const router = Router();
 
-// POST /seances/:id/reservations
-router.post("/seances/:id/reservations", validerId, (req, res) => {
-  const { nom, nbPlaces } = req.body ?? {};
+// POST /seances
+router.post("/", (req, res) => {
+  const { filmId, date, heure, salle, places } = req.body ?? {};
 
-
-  if (typeof nom !== "string" || nom.trim() === "") {
-    return res.status(400).json({ erreur: "nom obligatoire" });
+  // 1. Corps (400)
+  if (!Number.isInteger(filmId)) {
+    return res.status(400).json({ erreur: "filmId obligatoire (entier)" });
   }
-  if (!Number.isInteger(nbPlaces) || nbPlaces < 1 || nbPlaces > 10) {
-    return res.status(400).json({ erreur: "nbPlaces doit être un entier entre 1 et 10" });
+  for (const [nom, valeur] of [["date", date], ["heure", heure], ["salle", salle]]) {
+    if (typeof valeur !== "string" || valeur.trim() === "") {
+      return res.status(400).json({ erreur: `${nom} obligatoire` });
+    }
+  }
+  if (!Number.isInteger(places) || places < 1) {
+    return res.status(400).json({ erreur: "places doit être un entier >= 1" });
   }
 
+  // 2. Existence (404)
+  if (!films.some((f) => f.id === filmId)) {
+    return res.status(404).json({ erreur: "Film introuvable" });
+  }
+
+  const seance = { id: prochainId(seances), filmId, date, heure, salle, places };
+  seances.push(seance);
+  res.status(201).json(seance);
+});
+
+// GET /seances/:id
+router.get("/:id", validerId, (req, res) => {
   const seance = seances.find((s) => s.id === req.id);
   if (!seance) return res.status(404).json({ erreur: "Séance introuvable" });
 
-  if (nbPlaces > placesRestantes(seance)) {
-    return res.status(409).json({ erreur: "Pas assez de places restantes" });
-  }
-
-  const reservation = {
-    id: prochainId(reservations),
-    seanceId: seance.id,
-    nom: nom.trim(),
-    nbPlaces
-  };
-  reservations.push(reservation);
-  res.status(201).json(reservation);
-});
-
-// GET /seances/:id/reservations
-router.get("/seances/:id/reservations", validerId, (req, res) => {
-  const seance = seances.find((s) => s.id === req.id);
-  if (!seance) return res.status(404).json({ erreur: "Séance introuvable" });
-
-  res.json(reservations.filter((r) => r.seanceId === seance.id));
-});
-
-// DELETE /reservations/:id
-router.delete("/reservations/:id", validerId, (req, res) => {
-  const index = reservations.findIndex((r) => r.id === req.id);
-  if (index === -1) return res.status(404).json({ erreur: "Réservation introuvable" });
-
-  reservations.splice(index, 1);
-  res.status(204).end();
+  res.json({ ...seance, placesRestantes: placesRestantes(seance) });
 });
 
 export default router;
